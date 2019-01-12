@@ -29,6 +29,8 @@ GEM
       tzinfo (~> 0.3.37)
     arel (4.0.2)
     bcrypt-ruby (3.1.2)
+    bibtex-ruby (4.4.7)
+      latex-decode (~> 0.0)
     blacklight (4.5.0)
       bootstrap-sass (>= 2.2.0, < 2.4)
       kaminari (~> 0.13)
@@ -80,6 +82,7 @@ GEM
     kaminari (0.15.0)
       actionpack (>= 3.0.0)
       activesupport (>= 3.0.0)
+    latex-decode (0.3.1)
     less (2.4.0)
       commonjs (~> 0.2.7)
     less-rails (2.4.2)
@@ -183,7 +186,8 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  actionpack-page_caching (<= 1.1.1)
+  actionpack-page_caching
+  bibtex-ruby
   blacklight
   blacklight_range_limit
   bootstrap-sass
@@ -211,3 +215,9 @@ DEPENDENCIES
   turbolinks
   twitter-bootstrap-rails
   uglifier (>= 1.3.0)
+
+RUBY VERSION
+   ruby 2.0.0p353
+
+BUNDLED WITH
+   1.16.2

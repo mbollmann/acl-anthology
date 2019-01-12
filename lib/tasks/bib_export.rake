@@ -1,5 +1,6 @@
 # coding: utf-8
 require "rexml/document"
+require "bibtex"
 
 # check whether xml2bib executable has been compiled
 if (!File.exist?("lib/tasks/bibutils_5.9/bin/xml2bib"))
@@ -33,11 +34,11 @@ def export_volume_mods volume
 
 		name_part_first = name.add_element 'namePart'
 		name_part_first.attributes["type"]="given"
-		name_part_first.text = author.first_name
+		name_part_first.text = author.first_name.gsub(/[\{\}]/,'')
 
 		name_part_last = name.add_element 'namePart'
 		name_part_last.attributes["type"]="family"
-		name_part_last.text = author.last_name
+		name_part_last.text = author.last_name.gsub(/[\{\}]/,'')
 
 		role = name.add_element 'role'
 		roleterm = role.add_element 'roleTerm'
@@ -72,18 +73,18 @@ def export_volume_mods volume
 
 			paper_title_info = paper_mods.add_element 'titleInfo'
 			paper_title_name = paper_title_info.add_element 'title'
-			paper_title_name.text = paper.title
+			paper_title_name.text = paper.title.gsub(/[\{\}]/,'')
 			paper.people.each { |paper_author|
 				paper_name = paper_mods.add_element 'name'
 				paper_name.attributes["type"]="personal"
 
 				paper_name_part_first = paper_name.add_element 'namePart'
 				paper_name_part_first.attributes["type"]="given"
-				paper_name_part_first.text = paper_author.first_name
+				paper_name_part_first.text = paper_author.first_name.gsub(/[\{\}]/,'')
 
 				paper_name_part_last = paper_name.add_element 'namePart'
 				paper_name_part_last.attributes["type"]="family"
-				paper_name_part_last.text = paper_author.last_name
+				paper_name_part_last.text = paper_author.last_name.gsub(/[\{\}]/,'')
 
 				paper_role = paper_name.add_element 'role'
 				paper_roleterm = paper_role.add_element 'roleTerm'
@@ -152,7 +153,7 @@ end
 
 def export_paper_mods paper
 	dash = /[–-]+/
-	paper_title = paper.title
+	paper_title = paper.title.gsub(/[\{\}]/,'')
 	year = paper.year
 	volume_title = paper.volume.title
 	authors = paper.people
@@ -170,11 +171,11 @@ def export_paper_mods paper
 
 		name_part_first = name.add_element 'namePart'
 		name_part_first.attributes["type"]="given"
-		name_part_first.text = author.first_name
+		name_part_first.text = author.first_name.gsub(/[\{\}]/,'')
 
 		name_part_last = name.add_element 'namePart'
 		name_part_last.attributes["type"]="family"
-		name_part_last.text = author.last_name
+		name_part_last.text = author.last_name.gsub(/[\{\}]/,'')
 
 		role = name.add_element 'role'
 		roleterm = role.add_element 'roleTerm'
@@ -257,9 +258,80 @@ def export_paper_mods paper
 
 	file = File.new("export/mods/#{paper.anthology_id}.xml",'w')
 	file.write xml.to_s
+	file.close
+end
+
+# write bibtex
+def export_paper_bib paper
+	dash = /[–-]+/
+	paper_title = paper.title
+	year = paper.year
+	volume_title = paper.volume.title
+	authors = paper.people
+	id = paper.anthology_id
+	bibentry = BibTeX::Entry.new
+	bibentry.key=id
+	bibentry.title = paper_title
+        author_s = authors.map { |author|
+          author.last_name + ", " + author.first_name
+	} . join(" and\n          ")
+        bibentry.author = author_s
+
+	if (paper.anthology_id[0] == "Q" || paper.anthology_id[0] == "J")
+		bibentry.type = :article
+                if (paper.volume.journal_name)
+	          bibentry.journal = paper.volume.journal_name
+                end
+                if (paper.volume.journal_volume)
+                  bibentry.volume = paper.volume.journal_volume
+                end
+                if (paper.volume.journal_issue)
+                  bibentry.number = paper.volume.journal_issue
+                end
+	else
+		bibentry.type = :inproceedings
+                bibentry.booktitle = volume_title # as default
+	end
+	bibentry.year = year
+
+	if (paper.pages)
+		bibentry.pages = paper.pages.split(dash).join("--")
+	end
+
+	if paper.publisher
+		bibentry.publisher = paper.publisher
+	end
+
+	if paper.address
+		bibentry.location = paper.address
+	end
+
+	if (paper.doi)
+		bibentry.doi = paper.doi
+	end
+
+	if paper.url
+		bibentry.url = paper.url
+	end
+
+        # pipe through script to convert accented chars to latex
+        file = open("| ./bin/utf8_to_latex.py > export/bib/#{paper.anthology_id}.bib",'w')
+	file.write bibentry.to_s(:quotes => '"') + "\n"
 	file.close			
 end
 
+# create bibtex file with all papers in volume
+def export_volume_bib volume
+  `rm -f export/bib/#{volume.anthology_id}.bib`
+  volume.papers.each do |paper|
+    if (!((paper.anthology_id[0] == "W" and paper.anthology_id[-2..-1] == "00") or paper.anthology_id[-3..-1] == "000"))
+      # make bibtex file for individual paper
+      export_paper_bib paper
+      # concatenate
+      `cat export/bib/#{paper.anthology_id}.bib >> export/bib/#{volume.anthology_id}.bib`
+    end
+  end
+end
 
 namespace :export do
 	desc "Export paper mods xml"
@@ -285,11 +357,12 @@ namespace :export do
 				if i % 100 == 0
 			       	        puts "#{i}/#{all} Exporting bib for paper #{paper.anthology_id}"
 				end
-				run_cmd_quietly "#{bibutils_path}/xml2bib -nb -w export/mods/#{paper.anthology_id}.xml 2>&1 >export/bib/#{paper.anthology_id}.bib"
+                                export_paper_bib paper
 			end
 		else
-			paper = Paper.find_by_anthology_id(args[:anthology_id])
-			run_cmd_quietly "#{bibutils_path}/xml2bib -nb -w export/mods/#{paper.anthology_id}.xml 2>&1 >export/bib/#{paper.anthology_id}.bib"
+		  paper = Paper.find_by_anthology_id(args[:anthology_id])
+                  export_paper_bib paper
+#			run_cmd_quietly "#{bibutils_path}/xml2bib -nb -w export/mods/#{paper.anthology_id}.xml 2>&1 >export/bib/#{paper.anthology_id}.bib"
 		end
 	end
 
@@ -303,7 +376,7 @@ namespace :export do
 			if i % 100 == 0
 			       puts "#{i}/#{all} Exporting bib for paper #{paper.anthology_id}"
                         end
-			run_cmd_quietly "#{bibutils_path}/xml2bib -nb -w export/mods/#{paper.anthology_id}.xml 2>&1 >>export/bib/anthology.bib"
+			run_cmd_quietly "cat export/bib/#{paper.anthology_id}.bib >>export/bib/anthology.bib"
 		end
 	end
 
@@ -384,12 +457,12 @@ namespace :export do
 		if not args[:anthology_id]
 			Volume.all.each do |volume|
 				puts "Exporting bib for volume #{volume.anthology_id}"
-				`#{bibutils_path}/xml2bib -nb -w export/mods/#{volume.anthology_id}.xml >export/bib/#{volume.anthology_id}.bib`
+		                export_volume_bib volume
 			end
 		else
 			puts "Exporting bib for volume #{args[:anthology_id]}"
 			volume = Volume.find_by_anthology_id(args[:anthology_id])
-			`#{bibutils_path}/xml2bib -nb -w export/mods/#{volume.anthology_id}.xml >export/bib/#{volume.anthology_id}.bib`
+                        export_volume_bib volume
 		end
 	end
 

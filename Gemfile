@@ -74,6 +74,9 @@ gem 'metamagic'
 # Create zip file for acm
 gem 'rubyzip'
 
+# to create bibtex files
+gem 'bibtex-ruby'
+
 group :production do
 	gem 'rack'
 	# For deploying
